@@ -1,0 +1,407 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Vienna New Year Trip</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bodoni+Moda:opsz,wght@6..96,700&family=Source+Sans+3:wght@400;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="">
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
+<style>
+/* Layout idea: like a map app. Day tabs on top; map left (sticky), one-line stop list right.
+   Rows expand on tap. Red = booked, gold = pick one, teal = do any. */
+:root{
+  --paper:#f3f4f6; --card:#ffffff; --ink:#1c2230; --muted:#5d6577; --line:#dde0e6;
+  --wine:#9a2a3a; --gold:#a8781c; --teal:#2e6b6f;
+  --mapbg:#e6e9ee; --water:#b7d1e5; --park:#d2e2cd; --road:#ffffff; --u1:#c93a3a;
+  --display:"Bodoni Moda", Georgia, serif;
+  --body:"Source Sans 3", "Segoe UI", system-ui, sans-serif;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --paper:#11141b; --card:#1a1f29; --ink:#e8eaf0; --muted:#9aa2b4; --line:#2b3240;
+    --wine:#e07a88; --gold:#e0b45a; --teal:#6cbcb8;
+    --mapbg:#192030; --water:#21405a; --park:#1e3325; --road:#3a4458; --u1:#ff6b6b;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"]{
+  --paper:#11141b; --card:#1a1f29; --ink:#e8eaf0; --muted:#9aa2b4; --line:#2b3240;
+  --wine:#e07a88; --gold:#e0b45a; --teal:#6cbcb8;
+  --mapbg:#192030; --water:#21405a; --park:#1e3325; --road:#3a4458; --u1:#ff6b6b;
+  color-scheme: dark;
+}
+*{box-sizing:border-box}
+html,body{margin:0}
+body{background:var(--paper);color:var(--ink);font-family:var(--body);font-size:16px;line-height:1.4}
+a{color:inherit}
+button{font:inherit;color:inherit}
+
+/* top bar */
+.top{position:sticky;top:0;z-index:10;background:var(--paper);border-bottom:1px solid var(--line)}
+.topin{max-width:1280px;margin:0 auto;padding:10px 16px;display:flex;flex-wrap:wrap;align-items:center;gap:8px 14px}
+.brand{font-family:var(--display);font-size:22px;font-weight:700;margin-right:auto;white-space:nowrap}
+.brand small{font-family:var(--body);font-size:13px;color:var(--muted);font-weight:600;margin-left:8px}
+.tabs{display:flex;gap:6px;overflow-x:auto;max-width:100%}
+.tabs button{flex:none;border:1px solid var(--line);background:var(--card);border-radius:999px;padding:6px 14px;font-weight:600;font-size:14px;cursor:pointer}
+.tabs button[aria-selected="true"]{background:var(--ink);color:var(--paper);border-color:var(--ink)}
+.theme{border:1px solid var(--line);background:var(--card);border-radius:999px;padding:6px 12px;font-size:14px;cursor:pointer}
+
+/* day layout */
+main{max-width:1280px;margin:0 auto;padding:14px 16px 40px}
+.day{display:none}
+.day.on{display:block}
+.dhead{display:flex;flex-wrap:wrap;align-items:baseline;gap:4px 12px;margin:0 0 12px}
+.dhead h1{font-family:var(--display);font-size:26px;margin:0}
+.dhead span{color:var(--muted);font-size:15px}
+.grid{display:grid;grid-template-columns:minmax(0,1.15fr) minmax(340px,1fr);gap:16px;align-items:start}
+.mapcol{position:sticky;top:64px}
+.map{position:relative;border-radius:14px;overflow:hidden;border:1px solid var(--line);background:var(--mapbg)}
+.mapbar{display:flex;flex-wrap:wrap;gap:8px;margin-top:8px;font-size:13px;color:var(--muted);align-items:center}
+.gbtn{display:inline-flex;align-items:center;gap:6px;font-weight:600;font-size:14px;text-decoration:none;background:var(--ink);color:var(--paper);border-radius:999px;padding:6px 14px}
+.key{display:inline-flex;align-items:center;gap:5px}
+.dot{width:10px;height:10px;border-radius:50%;display:inline-block}
+
+/* list */
+.list{list-style:none;margin:0;padding:0;background:var(--card);border:1px solid var(--line);border-radius:14px;overflow:hidden}
+.list > li{border-top:1px solid var(--line)}
+.list > li:first-child{border-top:0}
+.move{display:flex;gap:10px;padding:8px 14px;font-size:14px;color:var(--muted);background:var(--paper)}
+.row{width:100%;display:grid;grid-template-columns:52px 30px 1fr 18px;gap:8px;align-items:center;text-align:left;background:none;border:0;padding:12px 14px;cursor:pointer}
+.row:hover{background:var(--paper)}
+.row:focus-visible,.tabs button:focus-visible,.theme:focus-visible,.gbtn:focus-visible,.mbtn:focus-visible{outline:3px solid var(--gold);outline-offset:-3px}
+.t{font-variant-numeric:tabular-nums;font-weight:700;font-size:14px}
+.n{display:grid;place-items:center;width:26px;height:26px;border-radius:50%;color:var(--card);font-weight:700;font-size:13px}
+.k-booked .n{background:var(--wine)} .k-pick .n{background:var(--gold)} .k-free .n{background:var(--teal)} .k-backup .n{background:var(--muted)}
+.ttl{min-width:0}
+.ttl b{display:block;font-size:16px}
+.k-booked .ttl b{color:var(--wine)}
+.ttl .sub{display:block;font-size:14px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.chev{color:var(--muted);transition:transform .2s}
+li.open .chev{transform:rotate(90deg)}
+li.hl{background:color-mix(in srgb, var(--gold) 10%, transparent)}
+.det{display:none;padding:0 14px 12px 104px}
+li.open .det{display:grid;gap:8px}
+.opt{display:flex;flex-wrap:wrap;align-items:center;gap:4px 10px;padding:8px 10px;border-radius:10px;background:var(--paper)}
+.opt .on{font-weight:700}
+.opt .ln{flex:1 1 220px;font-size:14px;color:var(--muted)}
+.mbtn{font-size:13px;font-weight:600;text-decoration:none;border:1px solid var(--ink);border-radius:999px;padding:3px 10px;white-space:nowrap}
+.alpha{font-weight:700;color:var(--muted);font-size:13px}
+
+/* map marks */
+.pin{cursor:pointer}
+.pin circle{stroke:var(--card);stroke-width:3}
+.pin text{fill:var(--card);font:700 15px var(--body);text-anchor:middle;dominant-baseline:central;pointer-events:none}
+.pin .lab{fill:var(--ink);font:600 14px var(--body);text-anchor:start;paint-order:stroke;stroke:var(--mapbg);stroke-width:5px;stroke-linejoin:round}
+.pin.hl circle{stroke:var(--ink);stroke-width:5}
+.f-booked{fill:var(--wine)} .f-pick{fill:var(--gold)} .f-free{fill:var(--teal)} .f-backup{fill:var(--muted)} .f-home{fill:var(--ink)}
+.maplab{fill:var(--muted);font:700 13px var(--body);letter-spacing:.14em;opacity:.7}
+.u1lab{fill:var(--u1);font:600 12px var(--body);paint-order:stroke;stroke:var(--mapbg);stroke-width:4px}
+
+.lmap{height:calc(100vh - 150px);min-height:420px;background:var(--mapbg)}
+.mk{display:grid;place-items:center;width:30px;height:30px;border-radius:50%;color:#fff;font:700 13px var(--body);border:3px solid #fff;box-shadow:0 2px 6px rgba(0,0,0,.35)}
+.mk.wide{width:36px;border-radius:15px}
+.mk.booked{background:var(--wine)} .mk.pick{background:var(--gold)} .mk.free{background:var(--teal)} .mk.backup{background:#6b7280} .mk.home{background:#1c2230}
+.mk.hl{transform:scale(1.25);border-color:#1c2230}
+.leaflet-tooltip.blab{font:600 13px var(--body);border-radius:8px;padding:2px 8px}
+.leaflet-container{font-family:var(--body)}
+@media (max-width:860px){ .lmap{height:58vh;min-height:320px} }
+/* bookings */
+.book{max-width:760px;background:var(--card);border:1px solid var(--line);border-radius:14px;padding:6px 16px}
+.book label{display:flex;gap:12px;padding:12px 0;border-top:1px solid var(--line);cursor:pointer}
+.book label:first-child{border-top:0}
+.book input{width:20px;height:20px;accent-color:var(--wine);flex:none;margin-top:2px}
+.book b{display:block}
+.book span span{color:var(--muted);font-size:14px}
+.book input:checked + span b{text-decoration:line-through;color:var(--muted)}
+.note{color:var(--muted);font-size:14px;margin:12px 0 0;max-width:760px}
+
+@media (max-width:860px){
+  .top{position:static}
+  .topin{flex-wrap:nowrap;flex-direction:column;align-items:stretch}
+  .topin .navrow{display:flex;gap:6px}
+  .tabs{flex:1}
+  .grid{grid-template-columns:1fr}
+  .mapcol{position:static}
+  .det{padding-left:14px}
+  .brand small{display:none}
+}
+@media (prefers-reduced-motion: reduce){ .chev{transition:none} }
+</style>
+</head>
+<body>
+
+<header class="top">
+  <div class="topin">
+    <div class="brand">Vienna, New Year <small>29 Dec – 1 Jan · base: Davidgasse 51</small></div>
+    <div class="navrow" style="display:flex;gap:6px;min-width:0">
+      <div class="tabs" role="tablist" id="tabs"></div>
+      <button class="theme" id="theme" type="button" aria-label="Switch light or dark theme">🌙</button>
+    </div>
+  </div>
+</header>
+
+<main id="main"></main>
+
+<script>
+/* ---------- places ---------- */
+const P = {
+  flat:["Davidgasse 51 (flat)","Davidgasse 51, 1100 Wien",48.1737925,16.3655283,"ChIJnXROYsmpbUcRF6nDuaEPfmo"],
+  kaiserStand:["Kaiser sausage stand","Krugerstraße 1, 1010 Wien",48.2041027,16.3707098,"ChIJxxEzg04HbUcRVau_yqE5yMw"],
+  sacher:["Café Sacher","Philharmoniker Str. 4, 1010 Wien",48.2039459,16.3698418,"ChIJI85wbpwHbUcR2nlviUzwg9s"],
+  blaue:["Blaue Bar","Philharmoniker Str. 4, 1010 Wien",48.2039824,16.3696762,"ChIJQ1RwbpwHbUcRw9osw8SbeXs"],
+  stephan:["St. Stephen's Cathedral","Stephansplatz 3, 1010 Wien",48.2084114,16.3734707,"ChIJz-w_Ip8HbUcRWTHc-vNXlxc"],
+  jesuit:["Jesuit Church","Dr.-Ignaz-Seipel-Platz 1, 1010 Wien",48.2090651,16.3776157,"ChIJZVUx7p8HbUcRaDH-fOVtmD8"],
+  paper:["Paper Republic","Sonnenfelsgasse 3, 1010 Wien",48.2098237,16.3756806,"ChIJ5weGl9oHbUcRDYgLNDNvYnc"],
+  graben:["Graben","Graben, 1010 Wien",48.2087219,16.3698073,"ChIJK-3S6ZgHbUcRiFS6mC6Lyhk"],
+  demel:["Demel","Kohlmarkt 14, 1010 Wien",48.2085962,16.3672185,"ChIJiY3_UpgHbUcRWCIbHu4EWXY"],
+  ferstel:["Palais Ferstel","Strauchgasse 4, 1010 Wien",48.211198,16.3656412,"ChIJtaq1-ZcHbUcR8HE26ayRGCs"],
+  kinsky:["Palais Kinsky","Freyung 4, 1010 Wien",48.2117089,16.3642487,"ChIJUfKlYL0HbUcRl1rVeLbsJAk"],
+  duft:["Duft und Kultur","Tuchlauben 17, 1010 Wien",48.2106768,16.3710633,"ChIJj6hrC6IHbUcR4w6cAgyEKwY"],
+  esterhazy:["Esterházykeller","Haarhof 1, 1010 Wien",48.2101036,16.3673852,"ChIJNfGSa5gHbUcR_-z8zDivryw"],
+  loos:["Loos American Bar","Kärntner Durchgang 10, 1010 Wien",48.207172,16.3712536,"ChIJC7AEzp4HbUcRO5T5ui_DBiA"],
+  braunerhof:["Café Bräunerhof","Stallburggasse 2, 1010 Wien",48.2072222,16.3686111,"ChIJ2xKxFZkHbUcRCYrKp2GlF10"],
+  groissbock:["Groissböck","Favoritenstraße 128, 1100 Wien",48.1756303,16.3775055,"ChIJLx52TcSpbUcR0qQmeo7pbaw"],
+  stateHall:["State Hall library","Josefsplatz 1, 1010 Wien",48.2063098,16.3668813,"ChIJfb6OTQAHbUcRbj7egpoxbnY"],
+  albertina:["Albertina","Albertinaplatz 1, 1010 Wien",48.2046992,16.3681824,"ChIJwVp-8psHbUcRuN43n5iK72Y"],
+  justice:["Palace of Justice","Schmerlingplatz 10, 1010 Wien",48.206763,16.3574025,"ChIJdYz1QpEHbUcRQVzZan0V3KQ"],
+  khm:["Kunsthistorisches Museum","Maria-Theresien-Platz, 1010 Wien",48.2038016,16.3617874,"ChIJ8XfPY5oHbUcRQbimbLVSYG8"],
+  schnitzelwirt:["Schnitzelwirt","Neubaugasse 52, 1070 Wien",48.2025369,16.3491982,"ChIJ2-iEcY0HbUcRey8RJa8Iq9I"],
+  amerling:["Amerlingbeisl","Stiftgasse 8, 1070 Wien",48.2031852,16.3543671,"ChIJy_We-5EHbUcRbbyWqg1LPfQ"],
+  spittel:["Spittelberg lanes","Spittelberggasse, 1070 Wien",48.2024,16.3557,""],
+  offerl:["Öfferl","Mariahilfer Str. 9, 1060 Wien",48.201113,16.3598506,""],
+  koenig:["Walther König bookshop","Museumsplatz 1, 1070 Wien",48.2037464,16.3588136,"ChIJ12xEQZAHbUcRQeRx7xQMPMQ"],
+  foto:["MQ photo booth","Museumsplatz 1, 1070 Wien",48.2034,16.3581,"ChIJ0e3RRwAHbUcRjihgqGAV5J0"],
+  hotel25:["25hours rooftop","Lerchenfelder Str. 1, 1070 Wien",48.2064947,16.3546991,"ChIJkeX76JMHbUcRccVM4zigiFQ"],
+  belvedere:["Upper Belvedere","Prinz-Eugen-Straße 27, 1030 Wien",48.1914751,16.3809322,"ChIJpZ4LAn0HbUcRB3aToFL8ZUo"],
+  market:["Belvedere Christmas market","Prinz-Eugen-Straße 27, 1030 Wien",48.1924,16.3798,"ChIJpZ4LAn0HbUcRB3aToFL8ZUo"],
+  gmoa:["Gmoa Keller","Am Heumarkt 25, 1030 Wien",48.2004539,16.3785907,"ChIJ9_OoE3cHbUcRznMNwYalDLU"],
+  sperl:["Café Sperl","Gumpendorfer Str. 11, 1060 Wien",48.1998326,16.3611306,"ChIJ2XE5E4UHbUcRnNXnuwsVah8"],
+  ahrnst:["Ährnst","Burggasse 57, 1070 Wien",48.2041208,16.3499505,"ChIJF-tVTvkHbUcR9lUEJRZfiRE"],
+  naschmarkt:["Naschmarkt","Naschmarkt, 1060 Wien",48.1986178,16.3636494,"ChIJUwyiX4QHbUcRvmyFdrjAugU"],
+  pitara:["Pitara Oroz","Hubergasse 9, 1160 Wien",48.2131873,16.3333913,"ChIJiYqz4-YHbUcRp46LRExVVF4"],
+  brunnen:["Brunnenmarkt","Brunnengasse, 1160 Wien",48.2123173,16.3362901,"ChIJdZn7Q5UHbUcRoTDxNRZvO3o"],
+  prater:["Prater winter market","Riesenradplatz, 1020 Wien",48.2160,16.3950,""],
+  wheel:["Giant Ferris Wheel","Riesenradplatz 1, 1020 Wien",48.2166995,16.3959008,"ChIJJYWNjA8HbUcRBlfleWeh1qw"],
+  danube:["Danube · Reichsbrücke","Reichsbrücke, Wien",48.227618,16.4082951,"ChIJq2CBsuMGbUcRjqAFMzVL-Go"],
+  kaisers:["Kaiser's Kaiserschmarrn","Favoriten, 1100 Wien",48.1803866,16.3760358,""],
+  lechner:["Gasthaus Lechner","Wilhelm-Exner-Gasse 28, 1090 Wien",48.224086,16.3524686,"ChIJBQ4SscgHbUcRE5dVCLByAlU"],
+  royal:["Royal Balkan Grill","Märzstraße 59, 1150 Wien",48.1975026,16.32603,"ChIJGTQxQvgHbUcRVpQhD7MVNPQ"],
+  volksoper:["Volksoper","Währinger Str. 78, 1090 Wien",48.2244623,16.3501066,"ChIJdQFUac8HbUcRQEsKKiX0wjQ"],
+  sky:["SKY Bar","Kärntner Straße 19, 1010 Wien",48.2068,16.3717,""],
+  grabenNY:["Graben (street)","Graben, 1010 Wien",48.2089,16.3703,""],
+  westbf:["Westbahnhof","Europaplatz 2, 1150 Wien",48.1967991,16.337702,"ChIJM3TCt_UHbUcRUQpk10hh5Gs"],
+  westend:["Café Westend","Mariahilfer Str. 128, 1070 Wien",48.1962241,16.3401742,"ChIJc9Eny08HbUcR_PEbCzTGCsY"],
+  jelinek:["Café Jelinek","Otto-Bauer-Gasse 5, 1060 Wien",48.1952021,16.3494101,"ChIJz860h4kHbUcRvp4byquVfPY"],
+  ritter:["Café Ritter","Mariahilfer Str. 73, 1060 Wien",48.1980349,16.3505166,"ChIJCb4G_4sHbUcRAwjrbC7j5VI"]
+};
+
+/* ---------- days: [time, icon, title, kind, [[place, tip]...]] or ["move", text] ---------- */
+const DAYS = [
+ {id:"day-1", tab:"Tue 29", title:"Arrive & old town", sub:"Old town · dinner booked 19:00", rows:[
+  ["move","🏠 Arrive ~12:30. Walk to U1 Keplerplatz → 3 stops to Karlsplatz"],
+  ["13:30","🌭","Lunch","pick",[["kaiserStand","Käsekrainer + mustard"],["sacher","Sacher sausages + Sachertorte"]]],
+  ["14:15","🚶","Old-town walk","free",[["stephan","Go inside"],["jesuit","Look up: the dome is painted"],["paper","Journals · closes 18:00"],["graben","Plague Column"],["ferstel","Walk the arcade"],["kinsky","Free baroque staircase"],["duft","Perfumes · closes 18:30"]]],
+  ["16:30","🍰","Coffee & cake","pick",[["demel","Kaiserschmarrn"],["sacher","Original Sachertorte"]]],
+  ["19:00","🔒","Esterházykeller","booked",[["esterhazy","Wiener Schnitzel + potato salad"]]],
+  ["21:00","🍸","Nightcap","pick",[["loos","1908 Loos bar, a cocktail"],["blaue","Hotel Sacher bar"],["kaiserStand","Late sausage"]]],
+  ["move","🏠 Home: U1 Stephansplatz → Keplerplatz"]
+ ]},
+ {id:"day-2", tab:"Wed 30", title:"Library, Klimt & market", sub:"Hofburg → MuseumsQuartier → Belvedere · booked 9:00 & 16:00", rows:[
+  ["move","🏠 Leave ~8:00. U1 Keplerplatz → 4 stops to Stephansplatz"],
+  ["8:15","☕","Breakfast","pick",[["braunerhof","Viennese breakfast · opens 8"],["sacher","Breakfast · opens 7"],["groissbock","Krapfen by the U1 · cash"]]],
+  ["9:00","🔒","State Hall library","booked",[["stateHall","Ceiling fresco + giant globes · about 1 hour"]]],
+  ["10:15","🚶","Free morning","free",[["albertina","State rooms · walk-in"],["demel","Coffee & cake"],["khm","Domed café · walk-in"],["justice","Glass hall · weekdays"]]],
+  ["13:00","🍽","Lunch","pick",[["schnitzelwirt","Huge schnitzel · cash"],["amerling","Goulash · courtyard"],["offerl","Light: a sandwich"]]],
+  ["14:00","📚","Bookshop & Spittelberg","free",[["koenig","Art bookshop · bargain table"],["foto","Photo strip · fires instantly"],["spittel","Old cobbled lanes"],["hotel25","Rooftop drink · from 15:00"]]],
+  ["move","🚶 Walk past Karlskirche to the Belvedere · about 30 min"],
+  ["16:00","🔒","Upper Belvedere","booked",[["belvedere","Klimt's The Kiss · about 1 hour"]]],
+  ["17:15","🎄","Christmas market dinner","free",[["market","Langos, sausages, punch · closes ~19:00"]]],
+  ["19:30","↺","Backup: Gmoa Keller","backup",[["gmoa","Tafelspitz or goulash · cancel if not needed"]]],
+  ["move","🏠 Home: U1 Karlsplatz → Keplerplatz"]
+ ]},
+ {id:"day-3", tab:"Thu 31", title:"Market, wheel & Fledermaus", sub:"Naschmarkt → Plan A or B → Volksoper → midnight · booked 19:00", rows:[
+  ["move","🏠 Leave ~8:00. U1 Keplerplatz → 3 stops to Karlsplatz"],
+  ["8:30","☕","Breakfast","pick",[["sperl","Breakfast + apple strudel"],["ahrnst","Best croissants · takeaway"],["offerl","Pistachio croissant"]]],
+  ["9:30","🧺","Naschmarkt","free",[["naschmarkt","Graze + a lucky pig charm · closes 12:00"]]],
+  ["12:00","🍽","Lunch: Plan A or B","pick",[["pitara","A · Burek · cash · call first"],["brunnen","A · Market next door"],["prater","B · Street food at the wheel"]]],
+  ["14:00","🎡","Prater & Danube","free",[["wheel","Ride the 1897 wheel"],["danube","U1 Donauinsel · walk the bridge"],["kaisers","Kaiserschmarrn near home"]]],
+  ["move","🏠 Rest at the flat ~15:30 · dress smart"],
+  ["17:00","🍽","Early dinner","pick",[["lechner","A · Fiaker Gulasch · cash"],["royal","B · Ćevapi + kajmak"]]],
+  ["19:00","🔒","Die Fledermaus","booked",[["volksoper","19:00–22:15 · Sekt in the interval"]]],
+  ["move","🚋 Tram 40/41 → Schottentor, walk to Graben"],
+  ["23:00","🥂","Midnight","pick",[["sky","Rooftop · €149"],["grabenNY","Free · bell + Blue Danube waltz"]]],
+  ["00:30","🌭","First sausage of 2027","free",[["kaiserStand","Käsekrainer, then U1 home"]]]
+ ]},
+ {id:"day-4", tab:"Fri 1", title:"Brunch & train", sub:"Westbahnhof · train 13:00", rows:[
+  ["move","🏠 Check out 10:00. U1 → Hauptbahnhof, tram 18 → Westbahnhof"],
+  ["10:35","🧳","Bag in a locker","free",[["westbf","Lockers €3.50–4.50"]]],
+  ["10:45","☕","Brunch","pick",[["westend","Across the station · cash"],["jelinek","Most vintage · 10 min walk"],["ritter","Since 1867 · 12 min walk"]]],
+  ["12:40","🚆","Train 13:00","booked",[["westbf","Be on the platform by 12:40"]]]
+ ]}
+];
+
+const BOOK = [
+  ["b1","Volksoper · Die Fledermaus","Thu 31 Dec, 19:00. Book first."],
+  ["b2","Esterházykeller","Tue 29 Dec, 19:00 · +43 1 5333482"],
+  ["b3","State Hall library ticket","Wed 30 Dec, 9:00"],
+  ["b4","Upper Belvedere ticket","Wed 30 Dec, ~16:00"],
+  ["b5","Gmoa Keller (backup)","Wed 30 Dec, 19:30 · +43 1 7125310"],
+  ["b6","Midnight: SKY Bar or Graben","SKY €149 per person, or Graben free"],
+  ["b7","Plan A calls","Pitara +43 699 17285801 · Lechner +43 1 3178318"],
+  ["b8","Plan B booking","Royal Balkan Grill 17:00 · +43 699 19111263"]
+];
+
+/* ---------- geography for the drawn map ---------- */
+const GEO = {
+  ring:[[48.2148,16.3605],[48.2118,16.3578],[48.208,16.3588],[48.2052,16.3598],[48.2028,16.3625],[48.2014,16.3682],[48.2014,16.3738],[48.2036,16.3782],[48.2076,16.3812],[48.2113,16.3838],[48.2124,16.3778],[48.2142,16.3732],[48.2166,16.3662],[48.2148,16.3605]],
+  gurtel:[[48.2315,16.3528],[48.2253,16.3505],[48.2165,16.3418],[48.2118,16.3395],[48.208,16.339],[48.2035,16.3377],[48.1967,16.3377],[48.1905,16.3378],[48.1855,16.3455],[48.1815,16.3585],[48.1845,16.372],[48.188,16.379],[48.1912,16.3832],[48.1895,16.3995]],
+  canal:[[48.235,16.3585],[48.229,16.3625],[48.222,16.3672],[48.2175,16.3722],[48.2122,16.3776],[48.2112,16.3842],[48.208,16.3925],[48.205,16.3985],[48.204,16.418]],
+  danube:[[48.256,16.374],[48.247,16.388],[48.238,16.3975],[48.2276,16.4082],[48.216,16.4235],[48.202,16.444]],
+  prater:[[48.2205,16.396],[48.215,16.412],[48.205,16.43],[48.199,16.425],[48.208,16.405],[48.216,16.394]],
+  u1:[[48.1746,16.3779],[48.1794,16.3763],[48.1856,16.3762],[48.1934,16.3712],[48.2003,16.3697],[48.2083,16.3713],[48.2116,16.378],[48.2154,16.3854],[48.2186,16.3925],[48.2248,16.4023],[48.2296,16.4107]],
+  u1st:["Reumannpl.","Keplerpl.","Hauptbahnhof","Taubstummeng.","Karlsplatz","Stephansplatz","Schwedenpl.","Nestroypl.","Praterstern","Vorgartenstr.","Donauinsel"],
+  labels:[["INNERE STADT",48.2128,16.3700],["NEUBAU",48.2008,16.3470],["MARIAHILF",48.1945,16.3535],["WIEDEN",48.1925,16.3660],["FAVORITEN",48.1772,16.3690],["LANDSTRASSE",48.1985,16.3925],["LEOPOLDSTADT",48.2235,16.3870],["ALSERGRUND",48.2205,16.3580],["OTTAKRING",48.2105,16.3255],["JOSEFSTADT",48.2098,16.3480],["DANUBE",48.2350,16.4010]]
+};
+
+/* ---------- helpers ---------- */
+const esc = s => String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+function mapsUrl(k){ const p=P[k]; let u="https://www.google.com/maps/search/?api=1&query="+encodeURIComponent(p[4]?p[0]+", "+p[1]:p[2]+","+p[3]); if(p[4]) u+="&query_place_id="+p[4]; return u; }
+function dayRouteUrl(d){
+  const keys=["flat"]; d.rows.forEach(r=>{ if(r[0]!=="move" && r[3]!=="backup"){ const k=r[4][0][0]; if(keys[keys.length-1]!==k) keys.push(k);} });
+  return "https://www.google.com/maps/dir/"+keys.slice(0,10).map(k=>encodeURIComponent(P[k][4]?P[k][0]+", "+P[k][1]:P[k][2]+","+P[k][3])).join("/");
+}
+function rowsOf(d){ let n=0; return d.rows.map(r=> r[0]==="move" ? {move:r[1]} : {n:++n, time:r[0], icon:r[1], title:r[2], kind:r[3], opts:r[4]}); }
+const letters="abcdefg";
+
+function pinsOf(d, rows){
+  const pts=[]; const seen={};
+  rows.forEach(r=>{ if(r.move) return; r.opts.forEach((o,i)=>{ const id=o[0]+"|"+r.n; if(seen[id]) return; seen[id]=1;
+    pts.push({k:o[0],n:r.n,lab:r.opts.length>1?r.n+letters[i]:String(r.n),kind:r.kind,main:i===0}); }); });
+  return pts;
+}
+function render(){
+  const main=document.getElementById("main");
+  let html="";
+  DAYS.forEach(d=>{
+    const rows=rowsOf(d);
+    const list=rows.map(r=>{
+      if(r.move) return `<li class="move">${esc(r.move)}</li>`;
+      const names=r.opts.map(o=>P[o[0]][0]);
+      const sub = r.kind==="booked"||r.opts.length===1 ? r.opts[0][1] : names.join(r.kind==="pick"?" · or ":" · ");
+      const det=r.opts.map((o,i)=>`<div class="opt">${r.opts.length>1?`<span class="alpha">${r.n}${letters[i]}</span>`:""}<span class="on">${esc(P[o[0]][0])}</span><span class="ln">${esc(o[1])}</span><a class="mbtn" href="${mapsUrl(o[0])}" target="_blank" rel="noopener">Maps ↗</a></div>`).join("");
+      return `<li class="k-${r.kind}" data-n="${r.n}"><button class="row" type="button" aria-expanded="false"><span class="t">${esc(r.time)}</span><span class="n">${r.n}</span><span class="ttl"><b>${esc(r.icon)} ${esc(r.title)}</b><span class="sub">${esc(sub)}</span></span><span class="chev" aria-hidden="true">›</span></button><div class="det">${det}</div></li>`;
+    }).join("");
+    html+=`<section class="day" id="${d.id}" role="tabpanel">
+      <div class="dhead"><h1>${esc(d.title)}</h1><span>${esc(d.sub)}</span></div>
+      <div class="grid">
+        <div class="mapcol"><div class="map"><div class="lmap" id="map-${d.id}" role="region" aria-label="Map of ${esc(d.title)}"></div></div>
+          <div class="mapbar"><a class="gbtn" href="${dayRouteUrl(d)}" target="_blank" rel="noopener">Open day in Google Maps ↗</a>
+          <span class="key"><span class="dot" style="background:var(--wine)"></span>booked</span><span class="key"><span class="dot" style="background:var(--gold)"></span>pick one</span><span class="key"><span class="dot" style="background:var(--teal)"></span>do any</span></div></div>
+        <ol class="list">${list}</ol>
+      </div></section>`;
+  });
+  html+=`<section class="day" id="book" role="tabpanel"><div class="dhead"><h1>To book</h1><span>Tick items off as you go (saved in this browser)</span></div><div class="book">${BOOK.map(([id,a,b])=>`<label for="${id}"><input type="checkbox" id="${id}"><span><b>${esc(a)}</b><span>${esc(b)}</span></span></label>`).join("")}</div><p class="note">31 Dec and 1 Jan are holidays and many places shorten their hours, so call ahead for anything marked "call". The U-Bahn runs all night on New Year's Eve.</p></section>`;
+  main.innerHTML=html;
+
+  document.getElementById("tabs").innerHTML = DAYS.map(d=>`<button role="tab" data-id="${d.id}" type="button">${esc(d.tab)}</button>`).join("")+`<button role="tab" data-id="book" type="button">✓ To book</button>`;
+}
+render();
+
+/* tabs via hash */
+function show(id){
+  if(!document.getElementById(id)) id="day-1";
+  document.querySelectorAll(".day").forEach(s=>s.classList.toggle("on", s.id===id));
+  document.querySelectorAll("#tabs button").forEach(b=>b.setAttribute("aria-selected", String(b.dataset.id===id)));
+}
+document.getElementById("tabs").addEventListener("click", e=>{ const b=e.target.closest("button"); if(!b) return; location.hash=b.dataset.id; show(b.dataset.id); });
+window.addEventListener("hashchange", ()=>show(location.hash.slice(1)));
+show(location.hash.slice(1)||"day-1");
+
+/* rows <-> pins */
+function highlight(sec,n,on){ sec.querySelectorAll(`.pin[data-n="${n}"]`).forEach(p=>p.classList.toggle("hl",on)); }
+document.querySelectorAll(".day").forEach(sec=>{
+  sec.querySelectorAll(".list > li[data-n]").forEach(li=>{
+    const n=li.dataset.n, btn=li.querySelector(".row");
+    btn.addEventListener("click", ()=>{ const o=!li.classList.contains("open"); li.classList.toggle("open",o); btn.setAttribute("aria-expanded",String(o)); });
+    li.addEventListener("mouseenter", ()=>highlight(sec,n,true));
+    li.addEventListener("mouseleave", ()=>highlight(sec,n,false));
+  });
+  sec.querySelectorAll(".pin[data-k]").forEach(p=>{
+    const go=()=>{ const li=sec.querySelector(`.list > li[data-n="${p.dataset.n}"]`); if(!li) return;
+      sec.querySelectorAll(".list > li.hl").forEach(x=>x.classList.remove("hl"));
+      li.classList.add("open","hl"); li.querySelector(".row").setAttribute("aria-expanded","true");
+      li.scrollIntoView({block:"nearest", behavior: matchMedia("(prefers-reduced-motion: reduce)").matches?"auto":"smooth"});
+      sec.querySelectorAll(".pin.hl").forEach(x=>x.classList.remove("hl")); highlight(sec,p.dataset.n,true); };
+    p.addEventListener("click",go);
+    p.addEventListener("keydown",e=>{ if(e.key==="Enter"||e.key===" "){ e.preventDefault(); go(); } });
+  });
+});
+
+
+/* ---------- real maps (Leaflet + OpenStreetMap/CARTO tiles) ---------- */
+const MAPS={}; const MK={};
+const TILES={light:"https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png", dark:"https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"};
+const ATTR='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/attributions">CARTO</a>';
+function curTheme(){ return document.documentElement.getAttribute("data-theme")==="dark"?"dark":"light"; }
+function initMap(d){
+  if(MAPS[d.id] || typeof L==="undefined") return;
+  const sec=document.getElementById(d.id);
+  const map=L.map("map-"+d.id,{scrollWheelZoom:true,zoomControl:true});
+  map._tiles=L.tileLayer(TILES[curTheme()],{attribution:ATTR,subdomains:"abcd",maxZoom:19}).addTo(map);
+  const rows=rowsOf(d); const pins=pinsOf(d,rows); MK[d.id]={};
+  /* route: first option of each row */
+  const route=[[P.flat[2],P.flat[3]]].concat(pins.filter(p=>p.main&&p.kind!=="backup").map(p=>[P[p.k][2],P[p.k][3]]));
+  L.polyline(route,{color:"#1c2230",weight:3,opacity:.5,dashArray:"2 9",lineCap:"round"}).addTo(map);
+  L.marker([P.flat[2],P.flat[3]],{icon:L.divIcon({className:"",html:'<div class="mk home">⌂</div>',iconSize:[30,30],iconAnchor:[15,15]}),title:"The flat"}).addTo(map).bindPopup("<b>Davidgasse 51</b><br>The flat");
+  pins.forEach(p=>{
+    const html=`<div class="mk ${p.kind}${p.lab.length>2?" wide":""}">${p.lab}</div>`;
+    const m=L.marker([P[p.k][2],P[p.k][3]],{icon:L.divIcon({className:"",html,iconSize:[30,30],iconAnchor:[15,15]}),title:p.lab+". "+P[p.k][0],zIndexOffset:p.kind==="booked"?500:0}).addTo(map);
+    m.bindTooltip(p.lab+". "+P[p.k][0],{direction:"right",offset:[14,0],className:"blab",permanent:p.kind==="booked"});
+    m.on("click",()=>openRow(sec,p.n));
+    (MK[d.id][p.n] ||= []).push(m);
+  });
+  const fitPts=pins.filter(p=>d.id==="day-4"||P[p.k][2]>48.183).map(p=>[P[p.k][2],P[p.k][3]]);
+  if(d.id==="day-4") fitPts.push([P.flat[2],P.flat[3]]);
+  map.fitBounds(fitPts,{padding:[40,40]});
+  MAPS[d.id]=map;
+}
+function mkHL(id,n,on){ (MK[id]&&MK[id][n]||[]).forEach(m=>{ const el=m.getElement(); if(el){ const c=el.querySelector(".mk"); if(c) c.classList.toggle("hl",on);} }); }
+function openRow(sec,n){
+  const li=sec.querySelector(`.list > li[data-n="${n}"]`); if(!li) return;
+  sec.querySelectorAll(".list > li.hl").forEach(x=>x.classList.remove("hl"));
+  li.classList.add("open","hl"); li.querySelector(".row").setAttribute("aria-expanded","true");
+  li.scrollIntoView({block:"nearest",behavior:matchMedia("(prefers-reduced-motion: reduce)").matches?"auto":"smooth"});
+}
+function activate(id){
+  const d=DAYS.find(x=>x.id===id); if(!d) return;
+  initMap(d); setTimeout(()=>MAPS[id]&&MAPS[id].invalidateSize(),60);
+}
+DAYS.forEach(d=>{
+  const sec=document.getElementById(d.id);
+  sec.querySelectorAll(".list > li[data-n]").forEach(li=>{
+    const n=li.dataset.n;
+    li.addEventListener("mouseenter",()=>mkHL(d.id,n,true));
+    li.addEventListener("mouseleave",()=>mkHL(d.id,n,false));
+    li.querySelector(".row").addEventListener("click",()=>{ const ms=MK[d.id]&&MK[d.id][n]; if(ms&&ms.length&&li.classList.contains("open")){ MAPS[d.id].fitBounds(L.latLngBounds(ms.map(m=>m.getLatLng())).pad(0.6),{maxZoom:16}); } });
+  });
+});
+window.addEventListener("hashchange",()=>activate(location.hash.slice(1)||"day-1"));
+document.getElementById("tabs").addEventListener("click",e=>{ const b=e.target.closest("button"); if(b) activate(b.dataset.id); });
+activate(location.hash.slice(1)||"day-1");
+
+/* theme: light by default */
+function setTheme(t){ document.documentElement.setAttribute("data-theme",t); document.getElementById("theme").textContent = t==="dark"?"☀️":"🌙"; try{localStorage.setItem("vienna-theme",t);}catch(e){} }
+let th="light"; try{ th=localStorage.getItem("vienna-theme")||"light"; }catch(e){}
+setTheme(th);
+document.getElementById("theme").addEventListener("click",()=>{ setTheme(document.documentElement.getAttribute("data-theme")==="dark"?"light":"dark"); Object.values(MAPS).forEach(m=>m._tiles.setUrl(TILES[curTheme()])); });
+
+/* bookings memory */
+let saved={}; try{ saved=JSON.parse(localStorage.getItem("vienna-bookings")||"{}"); }catch(e){}
+document.querySelectorAll(".book input").forEach(i=>{ i.checked=!!saved[i.id]; i.addEventListener("change",()=>{ saved[i.id]=i.checked; try{localStorage.setItem("vienna-bookings",JSON.stringify(saved));}catch(e){} }); });
+</script>
+</body>
+</html>
